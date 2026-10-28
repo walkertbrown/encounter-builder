@@ -123,6 +123,28 @@ describe('encounter block', () => {
 		expect(el.querySelector<HTMLElement>('.eb-fill')!.style.width).toBe('100%');
 	});
 
+	it('does Pathfinder 2e from a system line, reading levels from creature notes', async () => {
+		const note = '```encounter-builder\nsystem pf2e\nparty 4x level 1\n2x [[Goblin Warrior]]\n```';
+		const { el, text } = await setup(note, { 'Goblin Warrior': { frontmatter: { level: -1, hp: 6 } } });
+		expect(text('.eb-cr')).toEqual(['Level -1']);
+		expect(text('.eb-xp')).toEqual(['40 XP']); // 2 below the party: 20 each
+		expect(text('.eb-badge')).toEqual(['Trivial']);
+		expect(text('.eb-mark-label')).toEqual(['Trivial', 'Low', 'Moderate', 'Severe', 'Extreme']);
+		expect(text('.eb-mark-xp')).toEqual(['40', '60', '80', '120', '160']);
+		expect(el.querySelector('.eb-mark-trivial')!.classList.contains('is-on')).toBe(true);
+		expect(el.querySelector('.eb')!.classList.contains('eb-trivial')).toBe(true);
+		expect(el.querySelector<HTMLInputElement>('.eb-add-input')!.placeholder).toMatch(/level 3/);
+	});
+
+	it('does Pathfinder 2e for every block from settings, and a block can still say 5e', async () => {
+		const pf = await setup('```encounter-builder\nparty 4x level 2\nOgre level 2\n```', {}, { system: 'pf2e' });
+		expect(pf.text('.eb-badge')).toEqual(['Trivial']);
+		expect(pf.text('.eb-room')).toEqual(['Right on the Trivial budget']);
+		const dnd = await setup('```encounter-builder\nsystem 5e\nparty 4x level 2\nOgre cr 2\n```', {}, { system: 'pf2e' });
+		expect(dnd.text('.eb-cr')).toEqual(['CR 2']);
+		expect(dnd.text('.eb-mark-label')).toEqual(['Low', 'Moderate', 'High']);
+	});
+
 	it('has an insert command', async () => {
 		const { plugin } = await setup(NOTE);
 		const cmds = (plugin as never as { commands: { id: string }[] }).commands.map((c) => c.id);

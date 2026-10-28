@@ -41,6 +41,17 @@ Dov level 3 hp 24 ac 14
 [[Bugbear Warrior]]
 \`\`\``;
 
+const PF2E = `# Ambush at the mill
+
+The goblins wait in the loft. Their bugbear boss sleeps by the grain sacks.
+
+\`\`\`encounter-builder
+system pf2e
+party 4x level 3
+3x [[Goblin Warrior]] level -1
+Bugbear boss level 2
+\`\`\``;
+
 type Ctx = { sourcePath: string; addChild: () => void; getSectionInfo: () => { text: string; lineStart: number; lineEnd: number } };
 type Proc = (src: string, el: HTMLElement, c: Ctx) => void;
 
@@ -130,8 +141,17 @@ async function main() {
 	};
 	render();
 
+	// the sample note in either system; Start over goes back to the one showing
+	let sample = START;
 	document.querySelector('#reset')?.addEventListener('click', () => {
-		app.notes.get('Prep.md')!.content = START;
+		app.notes.get('Prep.md')!.content = sample;
+		render();
+	});
+	const swap = document.querySelector<HTMLButtonElement>('#system');
+	swap?.addEventListener('click', () => {
+		sample = sample === START ? PF2E : START;
+		swap.textContent = sample === START ? 'Pathfinder 2e' : 'D&D 5e';
+		app.notes.get('Prep.md')!.content = sample;
 		render();
 	});
 	const opened = document.querySelector<HTMLElement>('#opened');

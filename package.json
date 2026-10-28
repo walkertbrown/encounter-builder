@@ -1,6 +1,6 @@
 {
 	"name": "encounter-builder",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "Encounter Builder, a 5E-compatible encounter budget for Obsidian notes that hands the fight to Quick Initiative.",
 	"main": "main.js",
 	"type": "module",

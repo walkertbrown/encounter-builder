@@ -1,6 +1,6 @@
 # Encounter Builder
 
-Plan tabletop fights in an Obsidian note. List the party and the monsters, and the block adds up the XP against the 5E encounter budget: low, moderate or high. When it looks right, **Start fight** hands it to [Quick Initiative](https://github.com/walkertbrown/quick-initiative).
+Plan tabletop fights in an Obsidian note. List the party and the monsters, and the block adds up the XP against the 5E encounter budget (low, moderate or high) or Pathfinder 2e's (trivial to extreme). When it looks right, **Start fight** hands it to [Quick Initiative](https://github.com/walkertbrown/quick-initiative).
 
 ![Encounter Builder in a note: the XP bar, the creatures with their CR, and the note's text beside it](docs/demo.png)
 
@@ -59,6 +59,31 @@ The XP budget per character and the XP for each CR come from the encounter-build
 - There is no multiplier for the number of creatures in these rules. Instead the block warns when a fight has more than two creatures per character, a creature whose CR is above the party's level, more than three different stat blocks, or a crowd of CR 0 creatures.
 
 Turn the warnings off in settings if you know what you're doing.
+
+## Pathfinder 2e
+
+Put a `system pf2e` line in the block, or set **Rules** to Pathfinder 2e in settings for every block (a block can still say `system 5e`).
+
+````
+```encounter-builder
+system pf2e
+party 4x level 3
+2x [[Goblin Warrior]] level -1
+Bugbear boss level 2
+Ogre level 3
+```
+````
+
+In Pathfinder a level on a line is the creature's level. Characters are the `party` line, or lines marked `pc` (`Aria level 3 pc`). A linked note gives its level from a `level` field in its frontmatter.
+
+The math is GM Core's (pages 75 and 76):
+
+- A creature is worth XP by its level against the party level: 10 at four below, 40 at the party level, 160 at four above.
+- The budget for four characters is **Trivial** 40, **Low** 60, **Moderate** 80, **Severe** 120 and **Extreme** 160. Each character more or fewer moves each one by its character adjustment (10, 20, 20, 30, 40), so five characters get 50, 80, 100, 150 and 200.
+- A creature more than four levels from the party is off the table and counts nothing; the block says so. Give it an `xp` to count it. Hazards take an `xp` too (`Spiked pit xp 15`).
+- If the characters are different levels, the party level is their average, rounded down, and the block says which it used.
+
+The Pathfinder numbers come from Pathfinder GM Core by Paizo, under the ORC License. Encounter Builder isn't made or endorsed by Paizo.
 
 ## Start fight
 

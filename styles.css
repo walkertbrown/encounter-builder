@@ -7,6 +7,9 @@
 	--eb-moderate: var(--color-yellow, #e0ac00);
 	--eb-high: var(--color-orange, #e9973f);
 	--eb-over: var(--color-red, #fb464c);
+	--eb-trivial: var(--color-cyan, #53dfdd);
+	--eb-severe: var(--color-orange, #e9973f);
+	--eb-extreme: var(--color-red, #fb464c);
 	--eb-tone: var(--text-faint, #888);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: calc(var(--eb-radius) + 4px);
@@ -19,6 +22,9 @@
 .eb-moderate { --eb-tone: var(--eb-moderate); }
 .eb-high { --eb-tone: var(--eb-high); }
 .eb-over { --eb-tone: var(--eb-over); }
+.eb-trivial { --eb-tone: var(--eb-trivial); }
+.eb-severe { --eb-tone: var(--eb-severe); }
+.eb-extreme { --eb-tone: var(--eb-extreme); }
 
 .eb button {
 	font: inherit;
@@ -129,7 +135,7 @@
 .eb-marks {
 	position: relative;
 	display: grid;
-	grid-template-columns: repeat(3, 1fr);
+	grid-template-columns: repeat(var(--eb-steps, 3), minmax(0, 1fr));
 	gap: 6px;
 	margin-top: 8px;
 }
@@ -156,6 +162,9 @@
 .eb-mark-low.is-on { --eb-tone: var(--eb-low); }
 .eb-mark-moderate.is-on { --eb-tone: var(--eb-moderate); }
 .eb-mark-high.is-on { --eb-tone: var(--eb-high); }
+.eb-mark-trivial.is-on { --eb-tone: var(--eb-trivial); }
+.eb-mark-severe.is-on { --eb-tone: var(--eb-severe); }
+.eb-mark-extreme.is-on { --eb-tone: var(--eb-extreme); }
 .eb-mark.is-on {
 	color: var(--eb-tone);
 	border-color: color-mix(in srgb, var(--eb-tone) 50%, transparent);

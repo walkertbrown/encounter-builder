@@ -11,10 +11,11 @@ import {
 } from 'obsidian';
 import {
 	Analysis,
-	LABEL,
 	Line,
+	System,
 	addLines,
 	analyse,
+	badge,
 	fightLines,
 	headroom,
 	normalCr,
@@ -22,16 +23,19 @@ import {
 	parseLine,
 	partyText,
 	setCount,
+	systemLine,
 } from './budget';
 
 interface Settings {
 	party: string; // used when a block lists no characters, e.g. "party 4x level 3"
 	warnings: boolean; // show the SRD's troubleshooting notes under the budget
+	system: System; // the rules for blocks without a `system` line
 }
 
 const DEFAULT_SETTINGS: Settings = {
 	party: '',
 	warnings: true,
+	system: '5e',
 };
 
 const TEMPLATE = '```encounter-builder\nparty 4x level 3\n2x [[Goblin]]\n```\n';
@@ -61,20 +65,26 @@ export default class EncounterBuilderPlugin extends Plugin {
 			.filter((l): l is Line => l !== null && l.kind !== 'creature');
 	}
 
-	// The CR in a creature's note (Fantasy Statblocks writes `cr`).
-	crFromNote(l: Line, sourcePath: string): string | undefined {
+	// The CR in a creature's note (Fantasy Statblocks writes `cr`), or in Pathfinder its `level`.
+	ratingFromNote(l: Line, sourcePath: string, system: System): string | undefined {
 		if (!l.link) return undefined;
 		const file = this.app.metadataCache.getFirstLinkpathDest(l.link.split('#')[0]!, sourcePath);
 		if (!(file instanceof TFile)) return undefined;
 		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm) return undefined;
+		if (system === 'pf2e') return fm.level === undefined || fm.level === null ? undefined : String(fm.level);
 		return normalCr(fm.cr ?? fm.challenge_rating ?? fm.challenge);
 	}
 
+	systemOf(src: string): System {
+		return systemLine(src) ?? this.settings.system;
+	}
+
 	analyse(src: string, sourcePath: string): Analysis {
-		let lines = parseBlock(src);
+		const system = this.systemOf(src);
+		let lines = parseBlock(src, system);
 		if (!lines.some((l) => l.kind !== 'creature')) lines = [...this.defaultParty(), ...lines];
-		return analyse(lines, (l) => this.crFromNote(l, sourcePath));
+		return analyse(lines, (l) => this.ratingFromNote(l, sourcePath, system), system);
 	}
 
 	// Changes the note around one rendered block. `edit` gets the block's lines and returns
@@ -145,7 +155,7 @@ class Builder {
 		const title = head.createDiv({ cls: 'eb-title' });
 		setIcon(title.createSpan({ cls: 'eb-icon' }), 'swords');
 		title.createSpan({ text: 'Encounter' });
-		head.createDiv({ cls: 'eb-badge', text: LABEL[a.difficulty] });
+		head.createDiv({ cls: 'eb-badge', text: badge(a) });
 
 		this.drawMeter(box, a);
 
@@ -171,7 +181,8 @@ class Builder {
 					void this.plugin.app.workspace.openLinkText(c.link!, this.ctx.sourcePath);
 				});
 			} else name.setText(c.name);
-			row.createDiv({ cls: 'eb-cr', text: c.cr !== undefined ? `CR ${c.cr}` : 'CR ?' });
+			const rating = a.system === 'pf2e' ? `Level ${c.level ?? '?'}` : `CR ${c.cr ?? '?'}`;
+			row.createDiv({ cls: 'eb-cr', text: rating });
 			row.createDiv({
 				cls: 'eb-xp',
 				text: c.each === undefined ? '— XP' : `${fmt(c.each * c.count)} XP`,
@@ -192,7 +203,7 @@ class Builder {
 		const input = foot.createEl('input', {
 			cls: 'eb-add-input',
 			type: 'text',
-			placeholder: '2x [[Goblin]] or Ogre cr 2',
+			placeholder: a.system === 'pf2e' ? '2x [[Goblin Warrior]] or Ogre level 3' : '2x [[Goblin]] or Ogre cr 2',
 		});
 		const add = foot.createEl('button', { cls: 'eb-btn eb-add', text: 'Add' });
 		const submit = () => {
@@ -222,28 +233,29 @@ class Builder {
 		sum.createSpan({ cls: 'eb-total', text: fmt(a.total) });
 		sum.createSpan({ cls: 'eb-unit', text: ' XP' });
 		sum.createSpan({ cls: 'eb-room', text: headroom(a) });
-		const b = a.budget;
-		if (!a.levels.length) {
+		const top = a.steps[a.steps.length - 1];
+		if (!top) {
 			meter.createDiv({ cls: 'eb-party', text: partyText(a.levels) });
 			return;
 		}
-		// the bar runs a quarter past High so "over" has somewhere to go
-		const max = Math.max(b.high * 1.25, a.total);
+		// the bar runs a quarter past the top step so "over" has somewhere to go
+		const max = Math.max(top.xp * 1.25, a.total);
 		const pct = (n: number) => `${Math.min(100, (n / max) * 100).toFixed(2)}%`;
 		const bar = meter.createDiv({ cls: 'eb-bar' });
-		bar.createDiv({ cls: 'eb-zone eb-zone-low' }).style.width = pct(b.low);
+		bar.createDiv({ cls: 'eb-zone eb-zone-low' }).style.width = pct(a.steps[0]!.xp);
 		const fill = bar.createDiv({ cls: 'eb-fill' });
 		fill.style.width = pct(a.total);
-		for (const [k, v] of [['low', b.low], ['moderate', b.moderate], ['high', b.high]] as const) {
-			const tick = bar.createDiv({ cls: `eb-tick eb-tick-${k}` });
-			tick.style.left = pct(v);
+		for (const s of a.steps) {
+			const tick = bar.createDiv({ cls: `eb-tick eb-tick-${s.key}` });
+			tick.style.left = pct(s.xp);
 		}
 		const marks = meter.createDiv({ cls: 'eb-marks' });
-		for (const [k, label, v] of [['low', 'Low', b.low], ['moderate', 'Moderate', b.moderate], ['high', 'High', b.high]] as const) {
-			const m = marks.createDiv({ cls: `eb-mark eb-mark-${k}` });
-			if (a.difficulty === k) m.addClass('is-on');
-			m.createSpan({ cls: 'eb-mark-label', text: label });
-			m.createSpan({ cls: 'eb-mark-xp', text: fmt(v) });
+		marks.setCssProps({ '--eb-steps': String(a.steps.length) });
+		for (const s of a.steps) {
+			const m = marks.createDiv({ cls: `eb-mark eb-mark-${s.key}` });
+			if (a.difficulty === s.key) m.addClass('is-on');
+			m.createSpan({ cls: 'eb-mark-label', text: s.label });
+			m.createSpan({ cls: 'eb-mark-xp', text: fmt(s.xp) });
 		}
 		meter.createDiv({ cls: 'eb-party', text: partyText(a.levels) });
 	}
@@ -256,9 +268,9 @@ class Builder {
 				already = true;
 				return { body };
 			}
-			const own = parseBlock(body).some((l) => l.kind !== 'creature');
-			const party = own ? [] : fightLines(this.plugin.settings.party.split(/,|;/).join('\n'));
-			const lines = fightLines(body);
+			const own = parseBlock(body, this.plugin.systemOf(body)).some((l) => l.kind !== 'creature');
+			const party = own ? [] : fightLines(this.plugin.settings.party.split(/,|;/).join('\n'), '5e');
+			const lines = fightLines(body, this.plugin.systemOf(body));
 			if (!lines.length) return { body };
 			made = true;
 			return { body, after: ['', '```initiative', ...party, ...lines, '```'] };
@@ -279,6 +291,16 @@ class SettingTab extends PluginSettingTab {
 				name: 'Default party',
 				desc: 'Used when an encounter lists no characters. For example: party 4x level 3, or Aria level 5, Borin level 5.',
 				control: { type: 'text', key: 'party', defaultValue: DEFAULT_SETTINGS.party },
+			},
+			{
+				name: 'Rules',
+				desc: 'The encounter math for blocks without a system line. A block can name its own: system pf2e, or system 5e.',
+				control: {
+					type: 'dropdown',
+					key: 'system',
+					defaultValue: DEFAULT_SETTINGS.system,
+					options: { '5e': 'D&D 5e (SRD 5.2.1)', pf2e: 'Pathfinder 2e (GM Core)' },
+				},
 			},
 			{
 				name: 'Show warnings',

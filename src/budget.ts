@@ -1,5 +1,6 @@
 // The encounter as text, one line per character or creature, and the XP math from the
-// encounter-building rules in the SRD 5.2.1 (CC BY 4.0). Pure functions, testable without Obsidian.
+// encounter-building rules in the SRD 5.2.1 (CC BY 4.0), or Pathfinder 2e's from GM Core
+// (a `system pf2e` line). Pure functions, testable without Obsidian.
 //
 //   party 4x level 3
 //   Aria level 4 hp 31 ac 16
@@ -7,7 +8,9 @@
 //   Ogre cr 2
 //   Bandit captain xp 450
 
-export type Difficulty = 'none' | 'low' | 'moderate' | 'high' | 'over';
+export type System = '5e' | 'pf2e';
+
+export type Difficulty = 'none' | 'trivial' | 'low' | 'moderate' | 'high' | 'severe' | 'extreme' | 'over';
 
 export interface Line {
 	index: number; // line number inside the block
@@ -15,7 +18,7 @@ export interface Line {
 	count: number;
 	name: string;
 	link?: string; // the target inside [[ ]], without alias
-	level?: number;
+	level?: number; // a character's, or in Pathfinder a creature's
 	cr?: string; // as written: "2", "1/4"
 	xp?: number;
 }
@@ -24,6 +27,13 @@ export interface Budget {
 	low: number;
 	moderate: number;
 	high: number;
+}
+
+/** One threshold on the meter: the most XP an encounter can be and still be `key`. */
+export interface Step {
+	key: Difficulty;
+	label: string;
+	xp: number;
 }
 
 // XP Budget per Character, by level (SRD 5.2.1, "Combat Encounters").
@@ -77,6 +87,49 @@ export function budgetFor(levels: number[]): Budget {
 	return b;
 }
 
+// Pathfinder 2e, GM Core pp. 75-76 (Archives of Nethys, read 28 Oct 2026). Creature XP by its level less the party
+// level, -4 to +4; the budget is for four characters, moved by the adjustment for each one more or fewer.
+const PF2E_XP: Record<string, number> = { '-4': 10, '-3': 15, '-2': 20, '-1': 30, '0': 40, '1': 60, '2': 80, '3': 120, '4': 160 };
+const PF2E_BUDGET: [Difficulty, string, number, number][] = [
+	['trivial', 'Trivial', 40, 10],
+	['low', 'Low', 60, 20],
+	['moderate', 'Moderate', 80, 20],
+	['severe', 'Severe', 120, 30],
+	['extreme', 'Extreme', 160, 40],
+];
+
+/** A creature's XP in Pathfinder, by its level and the party's; undefined off GM Core's table. */
+export function pf2eXp(level: number, partyLevel: number): number | undefined {
+	return PF2E_XP[String(level - partyLevel)];
+}
+
+export function pf2eSteps(characters: number): Step[] {
+	let last = 0;
+	return PF2E_BUDGET.map(([key, label, xp, adjust]) => {
+		// a very small party can push a step under the one before it; it never drops below
+		last = Math.max(last, xp + (characters - 4) * adjust);
+		return { key, label, xp: last };
+	});
+}
+
+export function steps5e(b: Budget): Step[] {
+	return [
+		{ key: 'low', label: 'Low', xp: b.low },
+		{ key: 'moderate', label: 'Moderate', xp: b.moderate },
+		{ key: 'high', label: 'High', xp: b.high },
+	];
+}
+
+// The party level: what every character is, or else the average rounded down.
+export function partyLevel(levels: number[]): number {
+	return Math.floor(levels.reduce((a, b) => a + b, 0) / levels.length);
+}
+
+export function grade(total: number, steps: Step[]): Difficulty {
+	if (total <= 0 || !steps.length || steps[steps.length - 1]!.xp === 0) return 'none';
+	return steps.find((s) => total <= s.xp)?.key ?? 'over';
+}
+
 export function difficulty(total: number, b: Budget): Difficulty {
 	if (total <= 0 || b.high === 0) return 'none';
 	if (total <= b.low) return 'low';
@@ -86,10 +139,31 @@ export function difficulty(total: number, b: Budget): Difficulty {
 }
 
 const COUNT = /^(?:(\d+)x|x(\d+))$/i;
+const SYSTEM = /^\s*(?:[-*+]\s+)?(?:system|rules)\b\s*:?\s*(.*?)\s*$/i;
 
-export function parseLine(raw: string, index = 0): Line | null {
+// The rules named by one `system pf2e` (or `system 5e`) line; undefined for any other line.
+function readSystem(raw: string): System | undefined {
+	const m = SYSTEM.exec(raw);
+	const v = m?.[1]!.toLowerCase().replace(/[^a-z0-9.]/g, '');
+	if (v === undefined) return undefined;
+	if (/^(pf2e?|p2e|pathfinder(2e?|second(edition)?)?)$/.test(v)) return 'pf2e';
+	if (/^(5e|5\.5e|dnd|dnd5e|dd5e|dnd2024|2024|srd|srd5\.2(\.1)?)$/.test(v)) return '5e';
+	return undefined;
+}
+
+/** The rules a block names, if any. */
+export function systemLine(src: string): System | undefined {
+	for (const raw of src.split('\n')) {
+		const s = readSystem(raw);
+		if (s) return s;
+	}
+	return undefined;
+}
+
+// In Pathfinder every line that isn't the party or marked pc is a creature, and its level is the creature's.
+export function parseLine(raw: string, index = 0, system: System = '5e'): Line | null {
 	let rest = raw.trim().replace(/^[-*+]\s+/, '');
-	if (!rest || rest.startsWith('%%') || rest.startsWith('//')) return null;
+	if (!rest || rest.startsWith('%%') || rest.startsWith('//') || readSystem(rest)) return null;
 	let link: string | undefined;
 	let alias: string | undefined;
 	rest = rest.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/, (_m, l: string, a?: string) => {
@@ -115,8 +189,8 @@ export function parseLine(raw: string, index = 0): Line | null {
 		else if (i === 0 && low === 'party') party = true;
 		else if ((i === 0 || (i === 1 && party)) && /^\d+$/.test(t) && tokens.length > 1) count = parseInt(t, 10);
 		else if (low === 'player' || low === 'pc') player = true;
-		else if (/^(level|lvl|lv)$/.test(low) && next && /^\d+$/.test(next)) {
-			level = parseInt(next, 10);
+		else if (/^(level|lvl|lv)$/.test(low) && next && /^[-−]?\d+$/.test(next)) {
+			level = parseInt(next.replace('−', '-'), 10);
 			i++;
 		} else if ((m = /^(?:level|lvl|lv)(\d+)$/.exec(low))) level = parseInt(m[1]!, 10);
 		else if (low === 'cr' && next && normalCr(next) !== undefined) {
@@ -128,7 +202,7 @@ export function parseLine(raw: string, index = 0): Line | null {
 		} else if (/^(hp|ac|init|mod)$/.test(low) && next && /^[+-]?\d+(\/\d+)?$/.test(next)) i++;
 		else name.push(t);
 	}
-	const kind: Line['kind'] = party ? 'party' : player || level !== undefined ? 'pc' : 'creature';
+	const kind: Line['kind'] = party ? 'party' : player || (level !== undefined && system === '5e') ? 'pc' : 'creature';
 	const line: Line = {
 		index,
 		kind,
@@ -146,22 +220,23 @@ export function parseLine(raw: string, index = 0): Line | null {
 	return line;
 }
 
-export function parseBlock(src: string): Line[] {
+export function parseBlock(src: string, system: System = systemLine(src) ?? '5e'): Line[] {
 	const out: Line[] = [];
 	src.split('\n').forEach((raw, i) => {
-		const l = parseLine(raw, i);
+		const l = parseLine(raw, i, system);
 		if (l) out.push(l);
 	});
 	return out;
 }
 
 export interface Creature extends Line {
-	each?: number; // XP for one; undefined when the CR is not known
+	each?: number; // XP for one; undefined when the CR (or Pathfinder level) is not known
 }
 
 export interface Analysis {
+	system: System;
 	levels: number[]; // one per character
-	budget: Budget;
+	steps: Step[]; // the budget's thresholds, lowest first; empty with no party
 	creatures: Creature[];
 	total: number;
 	difficulty: Difficulty;
@@ -170,13 +245,18 @@ export interface Analysis {
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-// The numbers for one encounter. `crOf` gives the CR from a creature's note when the line has none.
-export function analyse(lines: Line[], crOf: (l: Line) => string | undefined = () => undefined): Analysis {
+// The numbers for one encounter. `rated` gives the rating from a creature's note when the line has none: its CR,
+// or in Pathfinder its level.
+export function analyse(lines: Line[], rated: (l: Line) => string | undefined = () => undefined, system: System = '5e'): Analysis {
 	const levels: number[] = [];
 	for (const l of lines) {
 		if (l.kind === 'creature') continue;
 		for (let i = 0; i < l.count; i++) levels.push(l.level ?? 1);
 	}
+	return system === 'pf2e' ? analysePf2e(lines, levels, rated) : analyse5e(lines, levels, rated);
+}
+
+function analyse5e(lines: Line[], levels: number[], crOf: (l: Line) => string | undefined): Analysis {
 	const creatures: Creature[] = lines
 		.filter((l) => l.kind === 'creature')
 		.map((l) => {
@@ -188,7 +268,7 @@ export function analyse(lines: Line[], crOf: (l: Line) => string | undefined = (
 			return c;
 		});
 	const total = creatures.reduce((s, c) => s + (c.each ?? 0) * c.count, 0);
-	const budget = budgetFor(levels);
+	const steps = levels.length ? steps5e(budgetFor(levels)) : [];
 	const warnings: string[] = [];
 	const n = creatures.reduce((s, c) => s + c.count, 0);
 	if (!levels.length) warnings.push('Add the party to see the budget: party 4x level 3, or one line per character like Aria level 3.');
@@ -202,37 +282,78 @@ export function analyse(lines: Line[], crOf: (l: Line) => string | undefined = (
 		);
 	}
 	if (levels.length) {
-		const partyLevel = Math.max(1, Math.floor(levels.reduce((a, b) => a + b, 0) / levels.length));
+		const pl = Math.max(1, partyLevel(levels));
 		for (const c of creatures) {
-			if (c.cr !== undefined && crValue(c.cr) > partyLevel) {
-				warnings.push(`${c.name} is CR ${c.cr}, above the party's level ${partyLevel}. One action could take a character out.`);
+			if (c.cr !== undefined && crValue(c.cr) > pl) {
+				warnings.push(`${c.name} is CR ${c.cr}, above the party's level ${pl}. One action could take a character out.`);
 			}
 		}
 	}
-	const blocks = new Set(creatures.map((c) => (c.link ?? c.name).toLowerCase()));
-	if (blocks.size > 3) warnings.push(`${blocks.size} different stat blocks to run. More than two or three is a lot to juggle.`);
+	warnings.push(...juggling(creatures));
 	const zero = creatures.filter((c) => c.cr === '0').reduce((s, c) => s + c.count, 0);
 	if (zero > 4) warnings.push(`${zero} CR 0 creatures. A swarm runs easier than many tiny ones.`);
-	return { levels, budget, creatures, total, difficulty: difficulty(total, budget), warnings };
+	return { system: '5e', levels, steps, creatures, total, difficulty: grade(total, steps), warnings };
+}
+
+function analysePf2e(lines: Line[], levels: number[], levelOf: (l: Line) => string | undefined): Analysis {
+	const pl = levels.length ? partyLevel(levels) : undefined;
+	const warnings: string[] = [];
+	if (pl === undefined) warnings.push('Add the party to see the budget: party 4x level 3, or one line per character like Aria level 3 pc.');
+	const creatures: Creature[] = lines
+		.filter((l) => l.kind === 'creature')
+		.map((l) => {
+			const c: Creature = { ...l };
+			const noted = l.level === undefined ? /^\s*[-−]?\d+/.exec(levelOf(l) ?? '')?.[0] : undefined;
+			if (noted !== undefined) c.level = parseInt(noted.replace('−', '-'), 10);
+			const each = l.xp ?? (c.level !== undefined && pl !== undefined ? pf2eXp(c.level, pl) : undefined);
+			if (each !== undefined) c.each = each;
+			if (l.xp !== undefined || pl === undefined) return c;
+			if (c.level === undefined) warnings.push(`No level for ${c.name}. Add level 2 (or xp 40) to the line, or a level field to its note.`);
+			else if (each === undefined) {
+				const way = c.level > pl ? 'above' : 'below';
+				warnings.push(`${c.name} is level ${c.level}, more than 4 ${way} the party's level ${pl}. GM Core's XP table runs from 4 below to 4 above; give it an xp to count it.`);
+			}
+			return c;
+		});
+	if (pl !== undefined && new Set(levels).size > 1) warnings.push(`The characters are different levels. The budget uses party level ${pl}.`);
+	warnings.push(...juggling(creatures));
+	const total = creatures.reduce((s, c) => s + (c.each ?? 0) * c.count, 0);
+	const steps = levels.length ? pf2eSteps(levels.length) : [];
+	return { system: 'pf2e', levels, steps, creatures, total, difficulty: grade(total, steps), warnings };
+}
+
+function juggling(creatures: Creature[]): string[] {
+	const blocks = new Set(creatures.map((c) => (c.link ?? c.name).toLowerCase()));
+	return blocks.size > 3 ? [`${blocks.size} different stat blocks to run. More than two or three is a lot to juggle.`] : [];
 }
 
 export const LABEL: Record<Difficulty, string> = {
 	none: 'No creatures',
+	trivial: 'Trivial',
 	low: 'Low',
 	moderate: 'Moderate',
 	high: 'High',
+	severe: 'Severe',
+	extreme: 'Extreme',
 	over: 'Over high',
 };
 
-// One line about where the total sits, e.g. "225 XP to spare before High".
+// The badge: the difficulty, and past the top step, "Over extreme" in Pathfinder.
+export function badge(a: Analysis): string {
+	const top = a.steps[a.steps.length - 1];
+	return a.difficulty === 'over' && top ? `Over ${top.label.toLowerCase()}` : LABEL[a.difficulty];
+}
+
+// One line about where the total sits, e.g. "225 XP left in the High budget".
 export function headroom(a: Analysis): string {
-	const { total, budget: b } = a;
-	if (!a.levels.length) return `${fmt(total)} XP`;
-	if (total > b.high) return `${fmt(total - b.high)} XP over the High budget`;
-	const next = total <= b.low ? ['Low', b.low] : total <= b.moderate ? ['Moderate', b.moderate] : ['High', b.high];
-	const left = (next[1] as number) - total;
-	if (left === 0) return `Right on the ${next[0]} budget`;
-	return `${fmt(left)} XP left in the ${next[0]} budget`;
+	const { total, steps } = a;
+	const top = steps[steps.length - 1];
+	if (!top) return `${fmt(total)} XP`;
+	if (total > top.xp) return `${fmt(total - top.xp)} XP over the ${top.label} budget`;
+	const next = steps.find((s) => total <= s.xp)!;
+	const left = next.xp - total;
+	if (left === 0) return `Right on the ${next.label} budget`;
+	return `${fmt(left)} XP left in the ${next.label} budget`;
 }
 
 export function partyText(levels: number[]): string {
@@ -279,14 +400,14 @@ export function addLines(src: string, text: string): string {
 }
 
 // The lines of a Quick Initiative `initiative` block for this encounter.
-export function fightLines(src: string): string[] {
+export function fightLines(src: string, system: System = systemLine(src) ?? '5e'): string[] {
 	const out: string[] = [];
 	src.split('\n').forEach((raw, i) => {
-		const l = parseLine(raw, i);
+		const l = parseLine(raw, i, system);
 		if (!l) return;
 		let t = raw.trim().replace(/^[-*+]\s+/, '');
 		t = t
-			.replace(/(^|\s)(?:level|lvl|lv)\s*\d+(?=\s|$)/gi, '$1')
+			.replace(/(^|\s)(?:level|lvl|lv)\s*[-−]?\d+(?=\s|$)/gi, '$1')
 			.replace(/(^|\s)cr\s+\S+(?=\s|$)/gi, '$1')
 			.replace(/(^|\s)xp\s+[\d,]+(?=\s|$)/gi, '$1');
 		if (l.kind === 'party') {
