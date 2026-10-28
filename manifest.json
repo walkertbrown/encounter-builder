@@ -1,0 +1,10 @@
+{
+	"id": "encounter-builder",
+	"name": "Encounter Builder",
+	"version": "0.1.0",
+	"minAppVersion": "1.13.0",
+	"description": "Build tabletop fights in a note. List the party and the monsters, see the XP budget and how hard it is, then start the fight in Quick Initiative.",
+	"author": "Bananafest Destiny",
+	"authorUrl": "https://bulkhead.bananafest-destiny.com",
+	"isDesktopOnly": false
+}
