@@ -191,9 +191,9 @@
 	border: 1px solid var(--background-modifier-border);
 	background: var(--background-secondary);
 }
-.eb-step .eb-btn {
+.eb .eb-step .eb-btn {
 	width: 28px;
-	height: 28px !important;
+	height: 28px;
 	padding: 0;
 	border: 0;
 	border-radius: 50%;
@@ -298,10 +298,10 @@
 .eb-foot .eb-btn:active {
 	transform: translateY(1px);
 }
-.eb-foot .eb-start {
+.eb .eb-foot .eb-start {
 	background: var(--eb-accent);
 	border-color: var(--eb-accent);
-	color: var(--text-on-accent, #fff) !important;
+	color: var(--text-on-accent, #fff);
 	font-weight: 600;
 }
 .eb-start:hover {

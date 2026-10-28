@@ -79,6 +79,7 @@ By hand: copy `main.js`, `manifest.json` and `styles.css` from the latest releas
 - [Quick Initiative](https://github.com/walkertbrown/quick-initiative): a light initiative tracker that keeps the fight as text in the note.
 - [Session Log](https://github.com/walkertbrown/session-log): a quick log for game night. With Quick Initiative, fights log themselves.
 - [Dice Tray](https://github.com/walkertbrown/dice-tray): rolls dice, random tables and note sections inline, and reads Dice Roller's `dice:` syntax.
+- [Progress Clocks](https://github.com/walkertbrown/progress-clocks): segmented clocks for danger, plans and factions, ticked with a click and kept as text in the note.
 
 ## Source
 
