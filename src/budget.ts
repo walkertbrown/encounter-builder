@@ -8,6 +8,8 @@
 //   Ogre cr 2
 //   Bandit captain xp 450
 
+import { srdFor } from './srd';
+
 export type System = '5e' | 'pf2e';
 
 export type Difficulty = 'none' | 'trivial' | 'low' | 'moderate' | 'high' | 'severe' | 'extreme' | 'over';
@@ -231,6 +233,7 @@ export function parseBlock(src: string, system: System = systemLine(src) ?? '5e'
 
 export interface Creature extends Line {
 	each?: number; // XP for one; undefined when the CR (or Pathfinder level) is not known
+	srd?: boolean; // its CR came from the SRD's monsters, not the line or its note
 }
 
 export interface Analysis {
@@ -246,7 +249,7 @@ export interface Analysis {
 const fmt = (n: number) => n.toLocaleString('en-US');
 
 // The numbers for one encounter. `rated` gives the rating from a creature's note when the line has none: its CR,
-// or in Pathfinder its level.
+// or in Pathfinder its level. In 5E a creature with neither takes its CR from the SRD monster of that name.
 export function analyse(lines: Line[], rated: (l: Line) => string | undefined = () => undefined, system: System = '5e'): Analysis {
 	const levels: number[] = [];
 	for (const l of lines) {
@@ -260,8 +263,12 @@ function analyse5e(lines: Line[], levels: number[], crOf: (l: Line) => string | 
 	const creatures: Creature[] = lines
 		.filter((l) => l.kind === 'creature')
 		.map((l) => {
-			const cr = l.cr ?? crOf(l);
+			let cr = l.cr ?? crOf(l);
 			const c: Creature = { ...l };
+			if (cr === undefined && l.xp === undefined) {
+				cr = srdFor(l)?.cr;
+				if (cr !== undefined) c.srd = true;
+			}
 			if (cr !== undefined) c.cr = cr;
 			const each = l.xp ?? crXp(cr);
 			if (each !== undefined) c.each = each;
@@ -399,8 +406,10 @@ export function addLines(src: string, text: string): string {
 	return body ? `${body}\n${add.join('\n')}` : add.join('\n');
 }
 
-// The lines of a Quick Initiative `initiative` block for this encounter.
-export function fightLines(src: string, system: System = systemLine(src) ?? '5e'): string[] {
+// The lines of a Quick Initiative `initiative` block for this encounter. In 5E a creature named for an SRD monster
+// brings its hp, ac and init along, unless the line gives its own numbers (or a cr or xp of its own), or links a
+// note that `hasNote` says is there.
+export function fightLines(src: string, system: System = systemLine(src) ?? '5e', hasNote: (l: Line) => boolean = () => false): string[] {
 	const out: string[] = [];
 	src.split('\n').forEach((raw, i) => {
 		const l = parseLine(raw, i, system);
@@ -415,6 +424,13 @@ export function fightLines(src: string, system: System = systemLine(src) ?? '5e'
 			if (!/[a-z]/i.test(t.replace(/(^|\s)(\d+x|x\d+|\d+)(?=\s|$)/gi, ''))) t = `${t} Character`;
 		}
 		if (l.kind !== 'creature' && !/(^|\s)(player|pc)(?=\s|$)/i.test(t)) t += ' player';
+		const own = l.cr !== undefined || l.xp !== undefined || (l.link !== undefined && hasNote(l));
+		const m = l.kind === 'creature' && system === '5e' && !own ? srdFor(l) : undefined;
+		if (m) {
+			if (!/(^|\s)hp\s/i.test(t)) t += ` hp ${m.hp}`;
+			if (!/(^|\s)ac\s/i.test(t)) t += ` ac ${m.ac}`;
+			if (!/(^|\s)init\s/i.test(t)) t += ` init ${m.init < 0 ? '-' : '+'}${Math.abs(m.init)}`;
+		}
 		out.push(t.replace(/\s+/g, ' ').trim());
 	});
 	return out;

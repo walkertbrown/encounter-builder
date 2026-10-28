@@ -13,8 +13,8 @@ Write an `encounter-builder` block, one line per character or creature:
 ````
 ```encounter-builder
 party 4x level 3
-3x [[Goblin Warrior]]
-[[Bugbear Warrior]]
+3x Goblin Warrior
+Bugbear Warrior
 Ogre cr 2
 ```
 ````
@@ -23,7 +23,7 @@ Switch to reading view (or live preview) and the block shows:
 
 - the total XP, with a bar marked at the Low, Moderate and High budgets for this party
 - each creature with its CR and XP, and **−** / **+** buttons that change the count in the note
-- an add box: type `2x [[Wolf]]` or `Troll cr 5` and press Enter
+- an add box: type `2x Wolf` or `Troll cr 5` and press Enter; it suggests the 329 SRD monsters as you type
 - notes when something looks risky (below)
 - **Start fight**, which writes an `initiative` block under the encounter
 
@@ -43,12 +43,19 @@ Mixed levels are fine: each character adds their own budget. Set a **Default par
 
 | Write | Meaning |
 | --- | --- |
+| `3x Goblin Warrior` | that many; a monster from the SRD 5.2.1 needs only its name |
 | `3x [[Goblin Warrior]]` or `x3` | that many, CR read from the linked note |
 | `Ogre cr 2` | CR on the line |
 | `Bandit captain xp 450` | XP on the line, for creatures from other games |
 | `hp 59 ac 11 init +2` | passed on to Quick Initiative |
 
 A linked note gives its CR from a `cr` field in its frontmatter, the way Fantasy Statblocks writes it (`cr: 1/4`, `cr: 0.25` and `cr: 2` all work). Creatures kept only in Fantasy Statblocks' own bestiary (not as notes) are not read; add `cr` to the line.
+
+### The SRD monsters
+
+The 329 monsters of the SRD 5.2.1 are built in, by name: `Owlbear`, `2x Goblin Warrior`, `Adult Red Dragon`. Plurals work too (`3x Wolves`). Hover a creature's CR to see its type, AC and HP. **Start fight** passes their HP, AC and initiative on to Quick Initiative, so a fight against SRD monsters needs no notes at all.
+
+Only the name, CR, size, type, AC, HP and initiative are kept, not the stat blocks. Your own numbers come first: a `cr` or `xp` on the line, or a linked note with a `cr`, is used instead of the SRD's.
 
 ## The budget
 

@@ -151,3 +151,21 @@ describe('encounter block', () => {
 		expect(cmds).toEqual(['insert-block']);
 	});
 });
+
+describe('SRD monsters in the block', () => {
+	it('rates them by name, says so on hover, and offers their names as you type', async () => {
+		const { el, text } = await setup('```encounter-builder\nparty 4x level 3\n2x Owlbear\n[[Goblin]]\n```', { Goblin: GOBLIN });
+		expect(text('.eb-cr')).toEqual(['CR 3', 'CR 1/4']);
+		expect(el.querySelectorAll('.eb-cr')[0]!.getAttribute('title')).toBe('Large Monstrosity, AC 13, HP 59. From the SRD 5.2.1.');
+		expect(el.querySelectorAll('.eb-cr')[1]!.getAttribute('title')).toBeNull();
+		const input = el.querySelector<HTMLInputElement>('.eb-add-input')!;
+		const list = el.querySelector<HTMLDataListElement>(`#${input.getAttribute('list')}`);
+		expect(list!.querySelectorAll('option').length).toBe(329);
+	});
+
+	it('starts a fight with their numbers', async () => {
+		const { click, content } = await setup('```encounter-builder\nparty 4x level 3\n2x Owlbear\n```', {});
+		await click('.eb-start');
+		expect(content()).toContain('```initiative\n4x Character player\n2x Owlbear hp 59 ac 13 init +1\n```');
+	});
+});

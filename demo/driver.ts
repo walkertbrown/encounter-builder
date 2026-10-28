@@ -37,8 +37,8 @@ Aria level 3 hp 27 ac 16
 Borin level 3 hp 31 ac 18
 Cass level 3 hp 20 ac 13
 Dov level 3 hp 24 ac 14
-3x [[Goblin Warrior]]
-[[Bugbear Warrior]]
+3x Goblin Warrior
+Bugbear Warrior
 \`\`\``;
 
 const PF2E = `# Ambush at the mill

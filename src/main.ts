@@ -25,6 +25,10 @@ import {
 	setCount,
 	systemLine,
 } from './budget';
+import { SRD_MONSTERS, srdFor } from './srd';
+
+// each add box gets its own list of names
+let lists = 0;
 
 interface Settings {
 	party: string; // used when a block lists no characters, e.g. "party 4x level 3"
@@ -65,11 +69,17 @@ export default class EncounterBuilderPlugin extends Plugin {
 			.filter((l): l is Line => l !== null && l.kind !== 'creature');
 	}
 
+	// The note a creature line links to, if it is in the vault.
+	noteFor(l: Line, sourcePath: string): TFile | null {
+		if (!l.link) return null;
+		const file = this.app.metadataCache.getFirstLinkpathDest(l.link.split('#')[0]!, sourcePath);
+		return file instanceof TFile ? file : null;
+	}
+
 	// The CR in a creature's note (Fantasy Statblocks writes `cr`), or in Pathfinder its `level`.
 	ratingFromNote(l: Line, sourcePath: string, system: System): string | undefined {
-		if (!l.link) return undefined;
-		const file = this.app.metadataCache.getFirstLinkpathDest(l.link.split('#')[0]!, sourcePath);
-		if (!(file instanceof TFile)) return undefined;
+		const file = this.noteFor(l, sourcePath);
+		if (!file) return undefined;
 		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		if (!fm) return undefined;
 		if (system === 'pf2e') return fm.level === undefined || fm.level === null ? undefined : String(fm.level);
@@ -182,7 +192,9 @@ class Builder {
 				});
 			} else name.setText(c.name);
 			const rating = a.system === 'pf2e' ? `Level ${c.level ?? '?'}` : `CR ${c.cr ?? '?'}`;
-			row.createDiv({ cls: 'eb-cr', text: rating });
+			const cr = row.createDiv({ cls: 'eb-cr', text: rating });
+			const srd = c.srd ? srdFor(c) : undefined;
+			if (srd) cr.setAttr('title', `${srd.kind}, AC ${srd.ac}, HP ${srd.hp}. From the SRD 5.2.1.`);
 			row.createDiv({
 				cls: 'eb-xp',
 				text: c.each === undefined ? '— XP' : `${fmt(c.each * c.count)} XP`,
@@ -203,8 +215,16 @@ class Builder {
 		const input = foot.createEl('input', {
 			cls: 'eb-add-input',
 			type: 'text',
-			placeholder: a.system === 'pf2e' ? '2x [[Goblin Warrior]] or Ogre level 3' : '2x [[Goblin]] or Ogre cr 2',
+			placeholder: a.system === 'pf2e' ? '2x [[Goblin Warrior]] or Ogre level 3' : '2x Goblin Warrior or Troll cr 5',
 		});
+		if (a.system === '5e') {
+			// the SRD's monsters, offered as you type a name
+			const id = `eb-srd-${++lists}`;
+			const names = foot.createEl('datalist');
+			names.id = id;
+			for (const m of SRD_MONSTERS) names.createEl('option').value = m.name;
+			input.setAttr('list', id);
+		}
 		const add = foot.createEl('button', { cls: 'eb-btn eb-add', text: 'Add' });
 		const submit = () => {
 			const text = input.value;
@@ -270,7 +290,7 @@ class Builder {
 			}
 			const own = parseBlock(body, this.plugin.systemOf(body)).some((l) => l.kind !== 'creature');
 			const party = own ? [] : fightLines(this.plugin.settings.party.split(/,|;/).join('\n'), '5e');
-			const lines = fightLines(body, this.plugin.systemOf(body));
+			const lines = fightLines(body, this.plugin.systemOf(body), (l) => this.plugin.noteFor(l, this.ctx.sourcePath) !== null);
 			if (!lines.length) return { body };
 			made = true;
 			return { body, after: ['', '```initiative', ...party, ...lines, '```'] };

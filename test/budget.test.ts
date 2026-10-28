@@ -17,6 +17,7 @@ import {
 	setCount,
 	systemLine,
 } from '../src/budget';
+import { SRD_MONSTERS, srdMonster } from '../src/srd';
 
 describe('reading lines', () => {
 	it('reads a party line', () => {
@@ -232,5 +233,47 @@ describe('Pathfinder 2e', () => {
 			'Aria pc',
 			'2x [[Goblin Warrior]]',
 		]);
+	});
+});
+
+describe('the SRD monsters', () => {
+	it('knows a monster by name, plural or linked', () => {
+		expect(srdMonster('Owlbear')).toMatchObject({ cr: '3', kind: 'Large Monstrosity', ac: 13, hp: 59, init: 1 });
+		expect(srdMonster('goblin warriors')?.name).toBe('Goblin Warrior');
+		expect(srdMonster('Wolves')?.name).toBe('Wolf');
+		expect(srdMonster('Swarm of Bats')?.cr).toBe('1/4');
+		expect(srdMonster('Beholder')).toBeUndefined();
+		expect(SRD_MONSTERS.length).toBe(329);
+		for (const m of SRD_MONSTERS) expect(crXp(m.cr), m.name).toBeDefined();
+	});
+
+	it('rates a creature from the SRD when the line and its note say nothing', () => {
+		const a = analyse(parseBlock('party 4x level 3\n3x Goblin Warrior\n[[Bugbear Warrior]]\nOgre cr 3\nBeholder'));
+		const [gob, bug, ogre, other] = a.creatures;
+		expect(gob).toMatchObject({ cr: '1/4', each: 50, srd: true });
+		expect(bug).toMatchObject({ cr: '1', each: 200, srd: true });
+		expect(ogre!.cr).toBe('3');
+		expect(ogre!.srd).toBeUndefined();
+		expect(other!.each).toBeUndefined();
+		expect(a.total).toBe(150 + 200 + 700);
+	});
+
+	it('leaves the note to rate a linked creature when it can', () => {
+		const a = analyse(parseBlock('[[Goblin Warrior]]'), () => '1');
+		expect(a.creatures[0]).toMatchObject({ cr: '1', each: 200 });
+		expect(a.creatures[0]!.srd).toBeUndefined();
+	});
+
+	it('hands its numbers to Quick Initiative, unless the line or its note has its own', () => {
+		const src = 'party 4x level 3\n3x Goblin Warrior\nOgre hp 80\n[[Owlbear]]\n[[Bugbear Warrior]]\nTroll cr 5';
+		expect(fightLines(src, '5e', (l) => l.link === 'Owlbear')).toEqual([
+			'4x Character player',
+			'3x Goblin Warrior hp 10 ac 15 init +2',
+			'Ogre hp 80 ac 11 init -1',
+			'[[Owlbear]]',
+			'[[Bugbear Warrior]] hp 33 ac 14 init +2',
+			'Troll',
+		]);
+		expect(fightLines('system pf2e\nparty 4x level 1\nOgre level 3', 'pf2e')).toEqual(['4x Character player', 'Ogre']);
 	});
 });
