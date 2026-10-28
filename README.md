@@ -115,6 +115,10 @@ By hand: copy `main.js`, `manifest.json` and `styles.css` from the latest releas
 
 ## Source
 
+## On your players' phones
+
+[DM Screen](https://github.com/walkertbrown/dm-screen), from the same maker, shows the fight on your players' phones once you start it: the turn order, hit points and conditions, with a battle map beside it. They open a link or a QR code in any phone browser, with nothing to install. DM Screen is paid ($12 once, on itch.io) with a free one-hour trial. Encounter Builder stays free.
+
 https://github.com/walkertbrown/encounter-builder
 
 ## Build
